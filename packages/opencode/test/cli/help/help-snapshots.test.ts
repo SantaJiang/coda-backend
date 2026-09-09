@@ -85,10 +85,11 @@ const SUBCOMMANDS = [
   ["db", "path"],
 ] as const
 
-// Fixed wrap width so a developer's terminal doesn't affect snapshots.
+// Fixed wrap width and locale so a developer's terminal doesn't affect snapshots.
 // yargs honors COLUMNS; CI runners typically default to 80 which produces
-// different wraps from a 200-col local terminal.
-const SNAPSHOT_ENV = { COLUMNS: "120" }
+// different wraps from a 200-col local terminal. y18n picks its catalog from
+// LC_ALL/LANG, so a non-English machine would otherwise translate the help text.
+const SNAPSHOT_ENV = { COLUMNS: "120", LC_ALL: "en_US.UTF-8", LANG: "en_US.UTF-8" }
 
 describe("opencode CLI help-text snapshots", () => {
   // Single test, parallel spawns. Each command's help fires under
