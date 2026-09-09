@@ -143,6 +143,7 @@ const table = sqliteTable("session", {
 - Avoid mocks as much as possible, you shouldn't be using globalThis.\* at all unless it's the only option.
 - Test actual implementation, do not duplicate logic into tests
 - Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
+- Pass `--timeout 30000` when invoking `bun test` directly. Bun's 5s default is too tight for the search-backed tests (`tool.grep`, `tool.glob`, file search), which then fail with a timeout rather than an assertion error. `bun run test` already sets it, but also adds `--only-failures`, so it re-runs only previously failed tests instead of the whole suite.
 
 ## Type Checking
 
