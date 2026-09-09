@@ -77,11 +77,23 @@ delete process.env["CEREBRAS_API_KEY"]
 delete process.env["SAMBANOVA_API_KEY"]
 delete process.env["OPENCODE_SERVER_PASSWORD"]
 delete process.env["OPENCODE_SERVER_USERNAME"]
+delete process.env["CODA_SERVER_PASSWORD"]
+delete process.env["CODA_SERVER_USERNAME"]
 delete process.env["OPENCODE_EXPERIMENTAL"]
 delete process.env["OPENCODE_ENABLE_EXPERIMENTAL_MODELS"]
 delete process.env["OTEL_EXPORTER_OTLP_ENDPOINT"]
 delete process.env["OTEL_EXPORTER_OTLP_HEADERS"]
 delete process.env["OTEL_RESOURCE_ATTRIBUTES"]
+
+// Clear config path overrides so a developer's shell can't redirect the global
+// config away from the test fixture. Flag prefers the OPENCODE_* names and
+// falls back to CODA_*, so either brand left in the environment breaks tests.
+delete process.env["OPENCODE_CONFIG"]
+delete process.env["OPENCODE_CONFIG_DIR"]
+delete process.env["OPENCODE_CONFIG_CONTENT"]
+delete process.env["CODA_CONFIG"]
+delete process.env["CODA_CONFIG_DIR"]
+delete process.env["CODA_CONFIG_CONTENT"]
 
 // Use in-memory sqlite
 process.env["OPENCODE_DB"] = ":memory:"
