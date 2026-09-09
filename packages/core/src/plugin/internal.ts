@@ -30,7 +30,6 @@ import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { AgentPlugin } from "./agent"
 import { CommandPlugin } from "./command"
 import { ModelsDevPlugin } from "./models-dev"
-import { ProviderPlugins } from "./provider"
 import { SkillPlugin } from "./skill"
 import { VariantPlugin } from "./variant"
 
@@ -107,6 +106,7 @@ const layer = Layer.effectDiscard(
 
     yield* State.batch(
       Effect.gen(function* () {
+        const { ProviderPlugins } = yield* Effect.promise(() => import("./provider"))
         yield* add(ConfigReferencePlugin.Plugin)
         yield* add(AgentPlugin.Plugin)
         yield* add(CommandPlugin.Plugin)
