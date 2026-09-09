@@ -20,7 +20,7 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("VercelPlugin", () => {
-  it.effect("applies legacy lower-case referer headers", () =>
+  it.effect("applies the lower-case title header", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
       yield* catalog.transform((catalog) => {
@@ -32,13 +32,12 @@ describe("VercelPlugin", () => {
       yield* addPlugin()
       expect((yield* catalog.provider.get(ProviderV2.ID.make("vercel")))?.request.headers).toEqual({
         Existing: "1",
-        "http-referer": "https://opencode.ai/",
-        "x-title": "opencode",
+        "x-title": "Coda",
       })
     }),
   )
 
-  it.effect("does not add legacy upper-case referer headers", () =>
+  it.effect("does not add upper-case or referer headers", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
       yield* catalog.transform((catalog) =>
@@ -49,6 +48,9 @@ describe("VercelPlugin", () => {
       yield* addPlugin()
       expect((yield* catalog.provider.get(ProviderV2.ID.make("vercel")))?.request.headers).not.toHaveProperty(
         "HTTP-Referer",
+      )
+      expect((yield* catalog.provider.get(ProviderV2.ID.make("vercel")))?.request.headers).not.toHaveProperty(
+        "http-referer",
       )
       expect((yield* catalog.provider.get(ProviderV2.ID.make("vercel")))?.request.headers).not.toHaveProperty("X-Title")
     }),

@@ -21,11 +21,11 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("OpenRouterPlugin", () => {
-  it.effect("is registered so legacy OpenRouter behavior can be applied", () =>
+  it.effect("is registered so OpenRouter behavior can be applied", () =>
     Effect.sync(() => expect(ProviderPlugins.map((item) => item.id)).toContain(PluginV2.ID.make("openrouter"))),
   )
 
-  it.effect("applies legacy referer headers only to openrouter", () =>
+  it.effect("applies the title header only to openrouter", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
       yield* catalog.transform((catalog) => {
@@ -39,8 +39,7 @@ describe("OpenRouterPlugin", () => {
 
       expect((yield* catalog.provider.get(ProviderV2.ID.openrouter))?.request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://opencode.ai/",
-        "X-Title": "opencode",
+        "X-Title": "Coda",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia")))?.request.headers).toEqual({})
     }),
