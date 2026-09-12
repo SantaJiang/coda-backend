@@ -1083,11 +1083,15 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
-        const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        let session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
+          // Refresh per step so permission rulesets changed while the loop is
+          // running (e.g. the client switching permission mode mid-run) apply
+          // to the next step instead of only on the next prompt.
+          session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
