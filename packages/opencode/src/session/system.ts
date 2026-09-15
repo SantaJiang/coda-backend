@@ -63,17 +63,15 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const skill = yield* Skill.Service
     const mcp = yield* MCP.Service
-    const locations = yield* LocationServiceMap.Service
+    yield* LocationServiceMap.Service
 
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
-        const ctx = yield* InstanceState.context
-        const references = yield* Effect.gen(function* () {
-          return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
-        }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
-        return [
-          [
-            `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
+        return yield* Effect.gen(function* () {
+          const ctx = yield* InstanceState.context
+          const modelID = model.api?.id ?? model.id
+          const env = [
+            `You are powered by the model named ${modelID}. The exact model ID is ${model.providerID}/${modelID}`,
             `Here is some useful information about the environment you are running in:`,
             `<env>`,
             `  Working directory: ${ctx.directory}`,
@@ -82,32 +80,56 @@ const layer = Layer.effect(
             `  Platform: ${process.platform}`,
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
-          ].join("\n"),
-          references.length === 0
-            ? undefined
-            : [
-                "Project references provide additional directories that can be accessed when relevant.",
-                "<available_references>",
-                ...references
-                  .toSorted((a, b) => a.name.localeCompare(b.name))
-                  .flatMap((reference) => [
-                    "  <reference>",
-                    `    <name>${reference.name}</name>`,
-                    `    <path>${reference.path}</path>`,
-                    ...(reference.description === undefined
-                      ? []
-                      : [`    <description>${reference.description}</description>`]),
-                    "  </reference>",
-                  ]),
-                "</available_references>",
-              ].join("\n"),
-        ].filter((part): part is string => part !== undefined)
+          ].join("\n")
+          const references = yield* Effect.gen(function* () {
+            const svc = yield* Reference.Service
+            const list = yield* svc.list()
+            return list.filter(
+              (reference) =>
+                reference != null && typeof reference.name === "string" && reference.description !== undefined,
+            )
+          }).pipe(
+            Effect.provide(LocationServiceMap.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("failed to load project references", { cause }).pipe(Effect.as([])),
+            ),
+          )
+          return [
+            env,
+            references.length === 0
+              ? undefined
+              : [
+                  "Project references provide additional directories that can be accessed when relevant.",
+                  "<available_references>",
+                  ...references
+                    .toSorted((a, b) => a.name.localeCompare(b.name))
+                    .flatMap((reference) => [
+                      "  <reference>",
+                      `    <name>${reference.name}</name>`,
+                      `    <path>${reference.path}</path>`,
+                      ...(reference.description === undefined
+                        ? []
+                        : [`    <description>${reference.description}</description>`]),
+                      "  </reference>",
+                    ]),
+                  "</available_references>",
+                ].join("\n"),
+          ].filter((part): part is string => part !== undefined)
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("system prompt environment failed", { cause }).pipe(Effect.as([] as string[])),
+          ),
+        )
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
         if (Permission.disabled(["skill"], agent.permission).has("skill")) return
 
-        const list = yield* skill.available(agent)
+        const list = yield* skill.available(agent).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("failed to list skills", { cause }).pipe(Effect.as([] as Skill.Info[])),
+          ),
+        )
 
         return [
           "Skills provide specialized instructions and workflows for specific tasks.",

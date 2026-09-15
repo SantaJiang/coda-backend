@@ -279,7 +279,9 @@ function credential(http: HttpClient.HttpClient, server: string, token: typeof T
       ],
       { concurrency: 2 },
     )
-    const org = orgs.toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))[0]
+    const org = orgs
+      .filter((item) => item != null && typeof item.name === "string" && typeof item.id === "string")
+      .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))[0]
     return Credential.OAuth.make({
       type: "oauth" as const,
       methodID,

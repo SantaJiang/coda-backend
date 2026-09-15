@@ -309,7 +309,9 @@ const layer = Layer.effect(
 
     const available = Effect.fn("Skill.available")(function* (agent?: Agent.Info) {
       const s = yield* InstanceState.get(state)
-      const list = Object.values(s.skills).toSorted((a, b) => a.name.localeCompare(b.name))
+      const list = Object.values(s.skills)
+        .filter((skill): skill is Info => skill != null && typeof skill.name === "string")
+        .toSorted((a, b) => a.name.localeCompare(b.name))
       if (!agent) return list
       return list.filter((skill) => Permission.evaluate("skill", skill.name, agent.permission).action !== "deny")
     })
@@ -319,7 +321,7 @@ const layer = Layer.effect(
 )
 
 export function fmt(list: Info[], opts: { verbose: boolean }) {
-  const described = list.filter((skill) => skill.description !== undefined)
+  const described = list.filter((skill) => skill != null && skill.description !== undefined)
   if (described.length === 0) return "No skills are currently available."
   if (opts.verbose) {
     return [

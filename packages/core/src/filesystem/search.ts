@@ -233,7 +233,15 @@ export const fffLayer = Layer.effect(
   }),
 )
 
-const layer = Layer.unwrap(Effect.sync(() => (Flag.OPENCODE_DISABLE_FFF || !Fff.available() ? ripgrepLayer : fffLayer)))
+const layer = Layer.unwrap(
+  Effect.sync(() => {
+    try {
+      return Flag.OPENCODE_DISABLE_FFF || !Fff.available() ? ripgrepLayer : fffLayer
+    } catch {
+      return ripgrepLayer
+    }
+  }),
+)
 
 export const locationLayer = layer
 

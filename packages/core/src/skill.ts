@@ -28,7 +28,9 @@ export const Info = Skill.Info
 export type Info = Skill.Info
 
 export const available = (skills: ReadonlyArray<Info>, agent: AgentV2.Info) =>
-  skills.filter((skill) => PermissionV2.evaluate("skill", skill.name, agent.permissions).effect !== "deny")
+  skills.filter(
+    (skill) => skill != null && PermissionV2.evaluate("skill", skill.name, agent.permissions).effect !== "deny",
+  )
 
 const Frontmatter = Schema.Struct({
   name: Schema.String.pipe(Schema.optional),

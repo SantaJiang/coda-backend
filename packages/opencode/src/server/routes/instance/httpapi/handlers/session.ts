@@ -316,12 +316,23 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       yield* promptSvc.prompt({ ...ctx.payload, sessionID: ctx.params.sessionID }).pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
-            yield* Effect.logError("prompt_async failed", { sessionID: ctx.params.sessionID, cause })
-            yield* events.publish(Session.Event.Error, {
-              sessionID: ctx.params.sessionID,
-              error: new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject(),
-            })
-          }),
+            const sessionID = ctx.params.sessionID
+            const pretty = Cause.pretty(cause)
+            yield* Effect.logError("prompt_async failed", { sessionID, cause })
+            const error = new NamedError.Unknown({ message: pretty }).toObject()
+            yield* events.publish(Session.Event.Error, { sessionID, error })
+            const match = yield* session
+              .findMessage(sessionID, (item) => item.info.role === "assistant")
+              .pipe(Effect.catch(() => Effect.succeed(Option.none())))
+            if (Option.isSome(match) && match.value.info.role === "assistant" && !match.value.info.error) {
+              yield* session.updateMessage({
+                ...match.value.info,
+                error,
+                time: { ...match.value.info.time, completed: Date.now() },
+              })
+            }
+            yield* statusSvc.set(sessionID, { type: "idle" })
+          }).pipe(Effect.catch((error) => Effect.logError("prompt_async recovery failed", { error }))),
         ),
         Effect.forkIn(scope, { startImmediately: true }),
       )
