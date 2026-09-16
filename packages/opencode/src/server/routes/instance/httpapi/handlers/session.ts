@@ -324,7 +324,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
             const match = yield* session
               .findMessage(sessionID, (item) => item.info.role === "assistant")
               .pipe(Effect.catch(() => Effect.succeed(Option.none())))
-            if (Option.isSome(match) && match.value.info.role === "assistant" && !match.value.info.error) {
+            if (Option.isSome(match) && match.value.info.role === "assistant" && !match.value.info.error && !match.value.info.time.completed) {
               yield* session.updateMessage({
                 ...match.value.info,
                 error,
