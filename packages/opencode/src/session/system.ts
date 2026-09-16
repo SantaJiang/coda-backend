@@ -63,7 +63,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const skill = yield* Skill.Service
     const mcp = yield* MCP.Service
-    yield* LocationServiceMap.Service
+    const locations = yield* LocationServiceMap.Service
 
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
@@ -89,7 +89,7 @@ const layer = Layer.effect(
                 reference != null && typeof reference.name === "string" && reference.description !== undefined,
             )
           }).pipe(
-            Effect.provide(LocationServiceMap.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))),
+            Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))),
             Effect.catchCause((cause) =>
               Effect.logWarning("failed to load project references", { cause }).pipe(Effect.as([])),
             ),
