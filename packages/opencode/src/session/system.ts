@@ -1,5 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
+import os from "os"
+import path from "path"
 
 import { InstanceState } from "@/effect/instance-state"
 
@@ -14,6 +16,7 @@ import PROMPT_META from "./prompt/meta.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import PROMPT_CODA_MODELS from "./prompt/coda-models.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -81,6 +84,12 @@ const layer = Layer.effect(
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
           ].join("\n")
+          const codaHome = process.env.CODA_HOME?.trim() || path.join(os.homedir(), ".coda")
+          const settingsPath = path.join(codaHome, "settings.json")
+          const codaModels = PROMPT_CODA_MODELS.replaceAll("{{SETTINGS_PATH}}", settingsPath).replaceAll(
+            "{{CODA_HOME}}",
+            codaHome,
+          )
           const references = yield* Effect.gen(function* () {
             const svc = yield* Reference.Service
             const list = yield* svc.list()
@@ -96,6 +105,7 @@ const layer = Layer.effect(
           )
           return [
             env,
+            codaModels,
             references.length === 0
               ? undefined
               : [

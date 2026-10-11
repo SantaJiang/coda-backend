@@ -8,11 +8,19 @@ import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
 
 const app = "opencode"
-const data = path.join(xdgData!, app)
-const cache = path.join(xdgCache!, app)
-const config = path.join(xdgConfig!, app)
-const state = path.join(xdgState!, app)
-const tmp = path.join(os.tmpdir(), app)
+
+function resolveCodaHome() {
+  const fromEnv = process.env.CODA_HOME?.trim()
+  if (fromEnv) return fromEnv
+  if ((process.env.OPENCODE_CLIENT ?? "cli") === "coda") return path.join(os.homedir(), ".coda")
+}
+
+const codaHome = resolveCodaHome()
+const data = codaHome ? path.join(codaHome, "data") : path.join(xdgData!, app)
+const cache = codaHome ? path.join(codaHome, "cache") : path.join(xdgCache!, app)
+const config = codaHome ?? path.join(xdgConfig!, app)
+const state = codaHome ? path.join(codaHome, "state") : path.join(xdgState!, app)
+const tmp = path.join(os.tmpdir(), codaHome ? "coda" : app)
 
 const paths = {
   get home() {
@@ -20,7 +28,7 @@ const paths = {
   },
   data,
   bin: path.join(cache, "bin"),
-  log: path.join(data, "log"),
+  log: codaHome ? path.join(codaHome, "logs") : path.join(data, "log"),
   repos: path.join(data, "repos"),
   cache,
   config,
