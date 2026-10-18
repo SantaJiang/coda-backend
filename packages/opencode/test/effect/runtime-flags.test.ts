@@ -10,6 +10,30 @@ const fromConfig = (input: Record<string, unknown>) =>
 const readFlags = RuntimeFlags.Service.useSync((flags) => flags)
 
 describe("RuntimeFlags", () => {
+  it.effect("Coda names take precedence in the actual runtime configuration layer", () =>
+    Effect.gen(function* () {
+      const flags = yield* readFlags.pipe(
+        Effect.provide(
+          fromConfig({
+            CODA_CLIENT: "coda",
+            OPENCODE_CLIENT: "cli",
+            CODA_DISABLE_DEFAULT_PLUGINS: "false",
+            OPENCODE_DISABLE_DEFAULT_PLUGINS: "true",
+            CODA_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "2345",
+            OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "1234",
+            CODA_EXPERIMENTAL: "true",
+            CODA_EXPERIMENTAL_LSP_TOOL: "false",
+          }),
+        ),
+      )
+      expect(flags.client).toBe("coda")
+      expect(flags.disableDefaultPlugins).toBe(false)
+      expect(flags.outputTokenMax).toBe(2345)
+      expect(flags.experimentalReferences).toBe(true)
+      expect(flags.experimentalLspTool).toBe(false)
+    }),
+  )
+
   it.effect("layer defaults autoShare to false", () =>
     Effect.gen(function* () {
       const flags = yield* readFlags.pipe(Effect.provide(fromConfig({})))

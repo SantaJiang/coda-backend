@@ -1,3 +1,5 @@
+import * as Terminals from "@/terminal/client"
+import * as TerminalStore from "@/terminal/store"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Agent } from "@/agent/agent"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
@@ -176,6 +178,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const remove = Effect.fn("SessionHttpApi.remove")(function* (ctx: { params: { sessionID: SessionID } }) {
+      const directory = (yield* InstanceState.context).directory
+      yield* Effect.promise(() => Terminals.stopSession(directory, ctx.params.sessionID, true))
       yield* SessionError.mapStorageNotFound(session.remove(ctx.params.sessionID))
       return true
     })
@@ -230,7 +234,17 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
+      const directory = (yield* InstanceState.context).directory
+      const messages = yield* session.messages({ sessionID: ctx.params.sessionID }).pipe(Effect.orDie)
+      const turnID = messages.findLast((message) => message.info.role === "user")?.info.id
+      const run = TerminalStore.run(ctx.params.sessionID)
+      if (run) TerminalStore.saveRun({ ...run, active: false, suppressed: true })
+      for (const task of TerminalStore.list(directory, ctx.params.sessionID))
+        if (!turnID || task.turnID === turnID) TerminalStore.update(task.id, { suppressed: true })
       yield* promptSvc.cancel(ctx.params.sessionID)
+      yield* Effect.promise(() =>
+        Terminals.stopSession(directory, ctx.params.sessionID, TerminalStore.settings().stopBehavior !== "ai", turnID),
+      )
       return true
     })
 
@@ -324,7 +338,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
             const match = yield* session
               .findMessage(sessionID, (item) => item.info.role === "assistant")
               .pipe(Effect.catch(() => Effect.succeed(Option.none())))
-            if (Option.isSome(match) && match.value.info.role === "assistant" && !match.value.info.error && !match.value.info.time.completed) {
+            if (
+              Option.isSome(match) &&
+              match.value.info.role === "assistant" &&
+              !match.value.info.error &&
+              !match.value.info.time.completed
+            ) {
               yield* session.updateMessage({
                 ...match.value.info,
                 error,

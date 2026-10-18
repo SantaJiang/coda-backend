@@ -1,3 +1,4 @@
+import * as TerminalTools from "../terminal/tools"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
@@ -108,6 +109,9 @@ const layer = Layer.effect(
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
     const shell = yield* ShellTool
+    const shellWait = yield* TerminalTools.Wait
+    const shellStatus = yield* TerminalTools.Status
+    const shellCancel = yield* TerminalTools.Cancel
     const globtool = yield* GlobTool
     const writetool = yield* WriteTool
     const edit = yield* EditTool
@@ -209,6 +213,9 @@ const layer = Layer.effect(
         const tool = yield* Effect.all({
           invalid: Tool.init(invalid),
           shell: Tool.init(shell),
+          shellWait: Tool.init(shellWait),
+          shellStatus: Tool.init(shellStatus),
+          shellCancel: Tool.init(shellCancel),
           read: Tool.init(read),
           glob: Tool.init(globtool),
           grep: Tool.init(greptool),
@@ -232,6 +239,7 @@ const layer = Layer.effect(
             tool.invalid,
             ...(questionEnabled ? [tool.question] : []),
             tool.shell,
+            ...(flags.client === "coda" ? [tool.shellWait, tool.shellStatus, tool.shellCancel] : []),
             tool.read,
             tool.glob,
             tool.grep,

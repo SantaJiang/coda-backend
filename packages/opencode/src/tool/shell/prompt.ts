@@ -14,6 +14,9 @@ export type Limits = {
 
 export function parameterSchema() {
   return Schema.Struct({
+    wait_ms: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(120_000))).annotate({
+      description: "Initial wait interval in milliseconds (default 10000, max 120000); does not terminate the command",
+    }),
     command: Schema.String.annotate({ description: "The command to execute" }),
     timeout: Schema.optional(PositiveInt).annotate({ description: "Optional timeout in milliseconds" }),
     workdir: Schema.optional(Schema.String).annotate({

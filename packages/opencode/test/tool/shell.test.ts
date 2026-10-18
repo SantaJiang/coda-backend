@@ -194,6 +194,16 @@ describe("tool.shell", () => {
     ),
   )
 
+  each("retains output across repeated fast exits", () =>
+    runIn(projectRoot, Effect.gen(function* () {
+      for (let index = 0; index < 20; index++) {
+        const result = yield* run({ command: `printf 'fast-${index}'` })
+        expect(result.metadata.exit).toBe(0)
+        expect(result.metadata.output).toContain(`fast-${index}`)
+      }
+    })),
+  )
+
   it.live("falls back from terminal-only configured shell", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped({ config: { shell: "fish" } })

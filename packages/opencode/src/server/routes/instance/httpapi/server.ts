@@ -1,3 +1,4 @@
+import { terminalHandlers } from "./handlers/terminal"
 import { Config as EffectConfig, Context, Effect, Layer } from "effect"
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
 import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
@@ -164,6 +165,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     permissionHandlers,
     providerHandlers,
     sessionHandlers,
+    terminalHandlers,
     syncHandlers,
     tuiHandlers,
     workspaceHandlers,

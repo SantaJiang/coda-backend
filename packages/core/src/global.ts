@@ -12,7 +12,7 @@ const app = "opencode"
 function resolveCodaHome() {
   const fromEnv = process.env.CODA_HOME?.trim()
   if (fromEnv) return fromEnv
-  if ((process.env.OPENCODE_CLIENT ?? "cli") === "coda") return path.join(os.homedir(), ".coda")
+  if ((process.env.CODA_CLIENT ?? process.env.OPENCODE_CLIENT ?? "cli") === "coda") return path.join(os.homedir(), ".coda")
 }
 
 const codaHome = resolveCodaHome()

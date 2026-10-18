@@ -221,13 +221,16 @@ function makePrompt(input?: { mcpInstructions?: MCP.ServerInstructions[]; proces
   return LayerNode.compile(promptRoot, replacements)
 }
 
-function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking" }) {
+function makeHttp(input?: { mcpInstructions?: MCP.ServerInstructions[]; processor?: "blocking"; client?: string }) {
   const root = LayerNode.group([promptRoot, testLLMServerNode])
   const replacements = [
     [SessionSummary.node, summary],
     [LSP.node, lsp],
     [MCP.node, makeMcp(input?.mcpInstructions)],
-    [RuntimeFlags.node, runtimeFlags],
+    [
+      RuntimeFlags.node,
+      input?.client ? RuntimeFlags.layer({ experimentalEventSystem: true, client: input.client }) : runtimeFlags,
+    ],
   ] as const
   if (input?.processor === "blocking") {
     return LayerNode.compile(root, [...replacements, [SessionProcessor.node, blockingProcessor]])
@@ -240,6 +243,7 @@ function makeHttpNoLLMServer(input?: { mcpInstructions?: MCP.ServerInstructions[
 }
 
 const it = testEffect(makeHttp())
+const coda = testEffect(makeHttp({ client: "coda" }))
 const noLLMServer = testEffect(makeHttpNoLLMServer())
 const raceNoLLMServer = testEffect(makeHttpNoLLMServer({ processor: "blocking" }))
 const withMcpInstructions = testEffect(
@@ -2467,4 +2471,128 @@ noLLMServer.instance(
       }
     }),
   30_000,
+)
+
+// The desktop owner and terminal records must remain isolated from the real Coda home.
+function withCodaOwner<A, E, R>(fx: Effect.Effect<A, E, R>) {
+  return Effect.gen(function* () {
+    const { directory } = yield* TestInstance
+    const home = path.join(directory, ".coda-test")
+    yield* writeText(
+      path.join(home, "runtime", "desktop.json"),
+      JSON.stringify({ id: "test-desktop", pid: process.pid, at: Date.now(), exiting: false }),
+    )
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const before = process.env.CODA_HOME
+        process.env.CODA_HOME = home
+        return before
+      }),
+      () => fx,
+      (before) =>
+        Effect.sync(() => {
+          if (before === undefined) delete process.env.CODA_HOME
+          else process.env.CODA_HOME = before
+        }),
+    )
+  })
+}
+
+coda.instance("Coda reconciles unfinished todos before ending a turn", () =>
+  withCodaOwner(
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const todos = yield* Todo.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Verify the existing build and update the plan." }],
+      })
+      yield* todos.update({
+        sessionID: chat.id,
+        todos: [{ content: "Verify build", status: "in_progress", priority: "high" }],
+      })
+      yield* llm.text("The build passed.")
+      yield* llm.tool("todowrite", { todos: [{ content: "Verify build", status: "completed", priority: "high" }] })
+      yield* llm.text("Build verified and plan updated.")
+      const result = yield* prompt.loop({ sessionID: chat.id })
+      expect((yield* todos.get(chat.id))[0]?.status).toBe("completed")
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(3)
+      expect(JSON.stringify(hits[1])).toContain("[Coda plan check]")
+      expect(
+        result.parts.some((part) => part.type === "text" && part.text === "Build verified and plan updated."),
+      ).toBe(true)
+    }),
+  ),
+)
+
+coda.instance("Coda bounds plan checks and never completes unverified todos itself", () =>
+  withCodaOwner(
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const todos = yield* Todo.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Check the plan." }],
+      })
+      yield* todos.update({
+        sessionID: chat.id,
+        todos: [{ content: "Blocked build", status: "pending", priority: "high" }],
+      })
+      yield* llm.text("Cannot verify the build.")
+      yield* llm.text("Build remains blocked.")
+      yield* prompt.loop({ sessionID: chat.id })
+      expect(yield* llm.hits).toHaveLength(2)
+      expect((yield* todos.get(chat.id))[0]?.status).toBe("pending")
+    }),
+  ),
+)
+
+coda.instance("Coda waits for tool results before its single plan check even when a provider reports stop", () =>
+  withCodaOwner(
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const todos = yield* Todo.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Check the build and reconcile the plan." }],
+      })
+      const unfinished = [{ content: "Check build", status: "in_progress", priority: "high" }]
+      yield* todos.update({ sessionID: chat.id, todos: unfinished })
+      yield* llm.push(reply().tool("todowrite", { todos: unfinished }).stop())
+      yield* llm.text("Build verified.")
+      yield* llm.tool("todowrite", { todos: [{ ...unfinished[0], status: "completed" }] })
+      yield* llm.text("Plan reconciled.")
+      yield* prompt.loop({ sessionID: chat.id })
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(4)
+      expect(JSON.stringify(hits[1])).not.toContain("[Coda plan check]")
+      expect(JSON.stringify(hits[2])).toContain("[Coda plan check]")
+      expect((yield* todos.get(chat.id))[0]?.status).toBe("completed")
+    }),
+  ),
 )

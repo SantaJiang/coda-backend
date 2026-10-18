@@ -1,3 +1,4 @@
+import { watchDesktop } from "./terminal/desktop"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
@@ -30,6 +31,8 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 
+watchDesktop()
+
 const args = hideBin(process.argv)
 
 function show(out: string) {
@@ -44,7 +47,7 @@ function show(out: string) {
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("coda")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")

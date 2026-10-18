@@ -1,4 +1,5 @@
-import { Effect, Stream } from "effect"
+import * as TerminalTools from "../terminal/tools"
+import { Effect, Stream, Fiber } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
 import * as Tool from "./tool"
@@ -483,7 +484,7 @@ export const ShellTool = Tool.define(
           yield* Effect.addFinalizer(closeSink)
           const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
 
-          yield* Effect.forkScoped(
+          const output = yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
               const size = Buffer.byteLength(chunk, "utf-8")
               list.push({ text: chunk, size })
@@ -554,6 +555,9 @@ export const ShellTool = Tool.define(
             yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
           }
 
+          // Exit notification can precede the final pipe chunks. Drain them before the
+          // scoped reader is interrupted, with a bound for descendants holding pipes open.
+          yield* Fiber.join(output).pipe(Effect.timeoutOption("1 second"))
           return exit.kind === "exit" ? exit.code : null
         }),
       ).pipe(Effect.orDie)
@@ -604,9 +608,16 @@ export const ShellTool = Tool.define(
         yield* Effect.logInfo("shell tool using shell", { shell })
 
         return {
-          description: prompt.description,
+          description:
+            flags.client === "coda"
+              ? prompt.description.replace(
+                  /If not specified, commands will time out after \d+ms\./g,
+                  "If omitted, commands have no execution deadline.",
+                ) +
+                "\nIn Coda, commands run in managed terminals. Unspecified timeout means no execution deadline. The initial wait defaults to 10 seconds; wait_ms controls only the next check. If still running, use shell_wait with task_id and cursor until completion. Never claim success while a command is running. Use non-interactive install flags; interactive terminal input is unavailable."
+              : prompt.description,
           parameters: prompt.parameters,
-          execute: (params: Parameters, ctx: Tool.Context) =>
+          execute: (params: Parameters, ctx: Tool.Context): Effect.Effect<Tool.ExecuteResult> =>
             Effect.gen(function* () {
               const instanceCtx = yield* InstanceState.context
               const cwd = params.workdir
@@ -627,6 +638,20 @@ export const ShellTool = Tool.define(
                   yield* ask(ctx, scan, params)
                 }),
               )
+
+              if (flags.client === "coda")
+                return yield* TerminalTools.execute(
+                  {
+                    shell,
+                    command: params.command,
+                    cwd,
+                    directory: instanceCtx.directory,
+                    env: yield* shellEnv(ctx, cwd),
+                    timeout: params.timeout,
+                    wait_ms: params.wait_ms,
+                  },
+                  ctx,
+                )
 
               return yield* run(
                 {

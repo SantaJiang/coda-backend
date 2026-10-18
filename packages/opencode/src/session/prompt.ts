@@ -1,3 +1,5 @@
+import * as TerminalStore from "../terminal/store"
+import * as TerminalClient from "../terminal/client"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import path from "path"
@@ -7,6 +9,7 @@ import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
 import { Session } from "./session"
+import { Todo } from "./todo"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
 
@@ -140,6 +143,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const todos = yield* Todo.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1083,6 +1087,8 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        const reviewedTodoTurns = new Set<string>()
+        let todoReminder: { turnID: string; content: string } | undefined
         let session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1092,6 +1098,7 @@ const layer = Layer.effect(
           // running (e.g. the client switching permission mode mid-run) apply
           // to the next step instead of only on the next prompt.
           session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+          if (flags.client === "coda") TerminalStore.owner()
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
@@ -1099,7 +1106,40 @@ const layer = Layer.effect(
 
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
+          if (todoReminder && todoReminder.turnID !== lastUser?.id) todoReminder = undefined
           if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
+          if (flags.client === "coda")
+            TerminalStore.saveRun({
+              sessionID,
+              ownerID: TerminalStore.owner().id,
+              turnID: lastUser.id,
+              backendID: TerminalClient.backendID,
+              active: true,
+            })
+
+          const terminalTasks =
+            flags.client === "coda"
+              ? TerminalStore.list(ctx.directory, sessionID).filter(
+                  (task) => task.sessionID === sessionID && task.turnID === lastUser.id && !task.suppressed,
+                )
+              : []
+          // A persisted tool result is the acknowledgement; do not consume a result merely because a process exited.
+          for (const task of terminalTasks) {
+            const delivered = msgs.some((message) =>
+              message.parts.some(
+                (part) =>
+                  part.type === "tool" &&
+                  part.state.status === "completed" &&
+                  part.state.metadata?.terminalID === task.id &&
+                  !["starting", "running"].includes(String(part.state.metadata?.terminalStatus)),
+              ),
+            )
+            if (delivered && !task.consumed) TerminalStore.update(task.id, { consumed: true })
+          }
+          const pendingTerminals = terminalTasks.filter((task) => {
+            const control = TerminalStore.control(task.id)
+            return !control.consumed && !control.needsInput
+          })
 
           const lastAssistantMsg = msgs.findLast(
             (msg) => msg.info.role === "assistant" && msg.info.id === lastAssistant?.id,
@@ -1116,6 +1156,8 @@ const layer = Layer.effect(
             lastAssistant?.finish &&
             !["tool-calls", "unknown"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
+            pendingTerminals.length === 0 &&
+            !todoReminder &&
             lastAssistant.parentID === lastUser.id
           ) {
             const orphan = lastAssistantMsg?.parts.find(
@@ -1227,7 +1269,16 @@ const layer = Layer.effect(
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
             const promptOps = yield* ops()
 
+            let terminalRoot = session
+            while (terminalRoot.parentID) terminalRoot = yield* sessions.get(terminalRoot.parentID).pipe(Effect.orDie)
+            const rootHistory =
+              terminalRoot.id === sessionID
+                ? msgs
+                : yield* sessions.messages({ sessionID: terminalRoot.id }).pipe(Effect.orDie)
+            const rootTurn = rootHistory.findLast((message) => message.info.role === "user")?.info.id
             const tools = yield* SessionTools.resolve({
+              rootSessionID: terminalRoot.id,
+              rootTurnID: rootTurn,
               agent,
               session,
               model,
@@ -1265,6 +1316,22 @@ const layer = Layer.effect(
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
+            if (pendingTerminals.length && lastAssistant?.finish && !hasToolCalls) {
+              // Avoid a tight stream of model calls if a provider ends its answer while shells are active.
+              const pending = pendingTerminals[0]!
+              yield* Effect.promise(() => TerminalClient.wait(pending.id, TerminalStore.active(pending) ? 30_000 : 0))
+              modelMsgs.push({
+                role: "user",
+                content:
+                  "[Coda task status] The task still has an unacknowledged terminal result. Use shell_wait or shell_status for " +
+                  pending.id +
+                  ". Inspect the result before finishing; never restart the original command automatically.",
+              })
+            }
+            if (todoReminder) {
+              modelMsgs.push({ role: "user", content: todoReminder.content })
+              todoReminder = undefined
+            }
             const system = [
               ...env,
               ...instructions,
@@ -1320,7 +1387,41 @@ const layer = Layer.effect(
               }
             }
 
-            if (result === "stop") return "break" as const
+            if (
+              result === "continue" &&
+              !isLastStep &&
+              flags.client === "coda" &&
+              finished &&
+              !handle.message.error &&
+              !pendingTerminals.length &&
+              format.type !== "json_schema" &&
+              tools["todowrite"] &&
+              !reviewedTodoTurns.has(lastUser.id)
+            ) {
+              // A provider can report "stop" on a response that still contains tool calls.
+              // Finish the tool cycle before spending the one plan check for this turn.
+              const parts = yield* MessageV2.parts(handle.message.id).pipe(
+                Effect.provideService(Database.Service, database),
+              )
+              if (parts.some((part) => part.type === "tool" && !part.metadata?.providerExecuted))
+                return "continue" as const
+              const unfinished = (yield* todos.get(sessionID)).filter(
+                (todo) => todo.status === "pending" || todo.status === "in_progress",
+              )
+              if (unfinished.length) {
+                reviewedTodoTurns.add(lastUser.id)
+                todoReminder = {
+                  turnID: lastUser.id,
+                  content:
+                    "[Coda plan check] Before finishing, reconcile the existing todo list with the work actually performed: " +
+                    JSON.stringify(unfinished) +
+                    ". Use todowrite to mark only verified completed items as completed. Keep genuinely unfinished or blocked work pending and explain it; cancel items only when no longer in scope. Never mark work completed just because this response is ending. Do not repeat completed commands. Then provide the final response.",
+                }
+                return "continue" as const
+              }
+            }
+            if (result === "stop")
+              return pendingTerminals.length && !handle.message.error ? ("continue" as const) : ("break" as const)
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,
@@ -1339,6 +1440,10 @@ const layer = Layer.effect(
           continue
         }
 
+        if (flags.client === "coda") {
+          const run = TerminalStore.run(sessionID)
+          if (run) TerminalStore.saveRun({ ...run, active: false })
+        }
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
       },
@@ -1347,6 +1452,14 @@ const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
+      if (flags.client === "coda") {
+        const checkpoint = TerminalStore.run(input.sessionID)
+        if (checkpoint?.suppressed) {
+          const history = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+          if (history.findLast((message) => message.info.role === "user")?.info.id === checkpoint.turnID)
+            return yield* lastAssistant(input.sessionID)
+        }
+      }
       return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
     })
 
@@ -1605,6 +1718,7 @@ export const node = LayerNode.make({
   deps: [
     SessionStatus.node,
     Session.node,
+    Todo.node,
     Agent.node,
     Provider.node,
     SessionProcessor.node,

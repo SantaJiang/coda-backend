@@ -1,7 +1,7 @@
 import { Config } from "effect"
 
 export function truthy(key: string) {
-  const value = process.env[key]?.toLowerCase()
+  const value = (process.env[key.replace(/^OPENCODE_/, "CODA_")] ?? process.env[key])?.toLowerCase()
   return value === "true" || value === "1"
 }
 
@@ -18,8 +18,8 @@ export const Flag = {
 
   OPENCODE_AUTO_HEAP_SNAPSHOT: truthy("OPENCODE_AUTO_HEAP_SNAPSHOT"),
   OPENCODE_GIT_BASH_PATH: process.env["OPENCODE_GIT_BASH_PATH"],
-  OPENCODE_CONFIG: process.env["OPENCODE_CONFIG"] || process.env["CODA_CONFIG"],
-  OPENCODE_CONFIG_CONTENT: process.env["OPENCODE_CONFIG_CONTENT"] || process.env["CODA_CONFIG_CONTENT"],
+  OPENCODE_CONFIG: process.env["CODA_CONFIG"] || process.env["OPENCODE_CONFIG"],
+  OPENCODE_CONFIG_CONTENT: process.env["CODA_CONFIG_CONTENT"] || process.env["OPENCODE_CONFIG_CONTENT"],
   OPENCODE_DISABLE_AUTOUPDATE: truthy("OPENCODE_DISABLE_AUTOUPDATE"),
   OPENCODE_ALWAYS_NOTIFY_UPDATE: truthy("OPENCODE_ALWAYS_NOTIFY_UPDATE"),
   OPENCODE_DISABLE_PRUNE: truthy("OPENCODE_DISABLE_PRUNE"),
@@ -29,8 +29,8 @@ export const Flag = {
   OPENCODE_DISABLE_MODELS_FETCH: truthy("OPENCODE_DISABLE_MODELS_FETCH"),
   OPENCODE_DISABLE_MOUSE: truthy("OPENCODE_DISABLE_MOUSE"),
   OPENCODE_FAKE_VCS: process.env["OPENCODE_FAKE_VCS"],
-  OPENCODE_SERVER_PASSWORD: process.env["OPENCODE_SERVER_PASSWORD"] || process.env["CODA_SERVER_PASSWORD"],
-  OPENCODE_SERVER_USERNAME: process.env["OPENCODE_SERVER_USERNAME"] || process.env["CODA_SERVER_USERNAME"],
+  OPENCODE_SERVER_PASSWORD: process.env["CODA_SERVER_PASSWORD"] || process.env["OPENCODE_SERVER_PASSWORD"],
+  OPENCODE_SERVER_USERNAME: process.env["CODA_SERVER_USERNAME"] || process.env["OPENCODE_SERVER_USERNAME"],
   OPENCODE_DISABLE_FFF: fff === undefined ? process.platform === "win32" : truthy("OPENCODE_DISABLE_FFF"),
 
   // Experimental
@@ -44,7 +44,7 @@ export const Flag = {
     copy === undefined ? process.platform === "win32" : truthy("OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT"),
   OPENCODE_MODELS_URL: process.env["OPENCODE_MODELS_URL"],
   OPENCODE_MODELS_PATH: process.env["OPENCODE_MODELS_PATH"],
-  OPENCODE_DB: process.env["OPENCODE_DB"],
+  OPENCODE_DB: process.env["CODA_DB"] ?? process.env["OPENCODE_DB"],
 
   OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
   OPENCODE_EXPERIMENTAL_WORKSPACES: enabledByExperimental("OPENCODE_EXPERIMENTAL_WORKSPACES"),
@@ -61,7 +61,7 @@ export const Flag = {
     return process.env["OPENCODE_TUI_CONFIG"]
   },
   get OPENCODE_CONFIG_DIR() {
-    return process.env["OPENCODE_CONFIG_DIR"] || process.env["CODA_CONFIG_DIR"]
+    return process.env["CODA_CONFIG_DIR"] || process.env["OPENCODE_CONFIG_DIR"]
   },
   get OPENCODE_PURE() {
     return truthy("OPENCODE_PURE")
@@ -73,6 +73,6 @@ export const Flag = {
     return process.env["OPENCODE_PLUGIN_META_FILE"]
   },
   get OPENCODE_CLIENT() {
-    return process.env["OPENCODE_CLIENT"] ?? "cli"
+    return process.env["CODA_CLIENT"] ?? process.env["OPENCODE_CLIENT"] ?? "cli"
   },
 }
