@@ -3,6 +3,21 @@ import path from "node:path"
 import os from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 
+/** Internal compaction/continuation messages do not start a new desktop task. */
+export function currentTurn(messages: Iterable<{
+  info: { id: string; role: string; time: { created: number } }
+  parts: readonly { type: string; synthetic?: boolean }[]
+}>) {
+  let latest: { id: string; time: { created: number } } | undefined
+  for (const message of messages) {
+    if (message.info.role !== "user" || message.parts.some((part) => part.type === "compaction")) continue
+    if (message.parts.length && message.parts.every((part) => part.type === "text" && part.synthetic)) continue
+    const info = message.info
+    if (!latest || info.time.created > latest.time.created || (info.time.created === latest.time.created && info.id > latest.id)) latest = info
+  }
+  return latest?.id
+}
+
 export type Status = "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
 export type Info = {
   id: string

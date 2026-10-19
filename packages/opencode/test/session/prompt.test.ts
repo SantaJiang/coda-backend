@@ -54,6 +54,7 @@ import { TestInstance } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { list, run } from "@/terminal/store"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
@@ -2497,6 +2498,34 @@ function withCodaOwner<A, E, R>(fx: Effect.Effect<A, E, R>) {
     )
   })
 }
+
+coda.instance("Coda preserves terminal ownership through real automatic compaction", () =>
+  withCodaOwner(
+    Effect.gen(function* () {
+      if (process.platform === "win32") return
+      const { directory } = yield* TestInstance
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const compaction = yield* SessionCompaction.Service
+      const chat = yield* sessions.create({ title: "Pinned", permission: [{ permission: "*", pattern: "*", action: "allow" }] })
+      const original = yield* prompt.prompt({ sessionID: chat.id, agent: "build", noReply: true, parts: [{ type: "text", text: "Verify the command output." }] })
+      yield* compaction.create({ sessionID: chat.id, agent: "build", model: ref, auto: true })
+      yield* llm.text("The user asked to verify the command output. Continue by running the check.")
+      yield* llm.tool("bash", { command: "printf compaction-owned", workdir: directory })
+      yield* llm.text("Command output verified.")
+      yield* prompt.loop({ sessionID: chat.id })
+      const tasks = list(directory, chat.id)
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0].turnID).toBe(original.info.id)
+      expect(tasks[0].rootTurnID).toBe(original.info.id)
+      expect(tasks[0].status).toBe("completed")
+      expect(run(chat.id)?.turnID).toBe(original.info.id)
+      expect(run(chat.id)?.active).toBe(false)
+      expect(yield* llm.hits).toHaveLength(3)
+    }),
+  ),
+)
 
 coda.instance("Coda reconciles unfinished todos before ending a turn", () =>
   withCodaOwner(

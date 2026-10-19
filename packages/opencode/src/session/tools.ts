@@ -48,6 +48,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
   rootSessionID?: string
   rootTurnID?: string
+  turnID?: string
 }) {
   const tools: Record<string, AITool> = {}
   const run = yield* EffectBridge.make()
@@ -66,6 +67,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     extra: {
       rootSessionID: input.rootSessionID ?? input.session.id,
       rootTurnID: input.rootTurnID,
+      turnID: input.turnID,
       model: input.model,
       bypassAgentCheck: input.bypassAgentCheck,
       promptOps: input.promptOps,

@@ -55,7 +55,7 @@ export function execute(
         rootTurnID: typeof ctx.extra?.rootTurnID === "string" ? ctx.extra.rootTurnID : undefined,
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
-        turnID: ctx.messages.findLast((item) => item.info.role === "user")?.info.id ?? ctx.messageID,
+        turnID: typeof ctx.extra?.turnID === "string" ? ctx.extra.turnID : Store.currentTurn(ctx.messages) ?? ctx.messageID,
         callID: ctx.callID ?? ctx.messageID,
       }),
     )

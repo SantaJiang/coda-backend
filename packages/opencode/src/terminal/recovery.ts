@@ -39,8 +39,7 @@ export function resume(
       const checkpoint = Store.run(key)
       if (current.suppressed || checkpoint?.suppressed || (current.consumed && !checkpoint?.active)) return
       const messages = yield* sessions.messages({ sessionID: SessionID.make(key) }).pipe(Effect.orDie)
-      const user = messages.findLast((message) => message.info.role === "user")
-      if (!user || user.info.id !== info.turnID || info.ownerID !== Store.owner().id) {
+      if (Store.currentTurn(messages) !== info.turnID || info.ownerID !== Store.owner().id) {
         Store.update(info.id, { suppressed: true })
         return
       }

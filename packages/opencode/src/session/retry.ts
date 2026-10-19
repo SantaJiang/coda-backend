@@ -27,7 +27,7 @@ export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_JITTER_FACTOR = 0.25
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
-export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
+export const RETRY_MAX_DELAY = 60_000 // Bound provider retry hints to one minute per attempt.
 export const RETRY_MAX_RETRIES = 5
 
 const RETRYABLE_MESSAGE_PATTERNS = [
@@ -50,16 +50,16 @@ export function delay(attempt: number, error?: SessionV1.APIError, random = Math
     if (headers) {
       const retryAfterMs = headers["retry-after-ms"]
       if (retryAfterMs) {
-        const parsedMs = Number.parseFloat(retryAfterMs)
-        if (!Number.isNaN(parsedMs)) {
+        const parsedMs = Number(retryAfterMs)
+        if (Number.isFinite(parsedMs) && parsedMs >= 0) {
           return cap(parsedMs)
         }
       }
 
       const retryAfter = headers["retry-after"]
       if (retryAfter) {
-        const parsedSeconds = Number.parseFloat(retryAfter)
-        if (!Number.isNaN(parsedSeconds)) {
+        const parsedSeconds = Number(retryAfter)
+        if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
           // convert seconds to milliseconds
           return cap(Math.ceil(parsedSeconds * 1000))
         }

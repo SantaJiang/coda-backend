@@ -236,7 +236,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
       const directory = (yield* InstanceState.context).directory
       const messages = yield* session.messages({ sessionID: ctx.params.sessionID }).pipe(Effect.orDie)
-      const turnID = messages.findLast((message) => message.info.role === "user")?.info.id
+      const turnID = TerminalStore.currentTurn(messages)
       const run = TerminalStore.run(ctx.params.sessionID)
       if (run) TerminalStore.saveRun({ ...run, active: false, suppressed: true })
       for (const task of TerminalStore.list(directory, ctx.params.sessionID))

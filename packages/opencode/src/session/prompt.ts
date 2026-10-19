@@ -1100,19 +1100,21 @@ const layer = Layer.effect(
           session = yield* sessions.get(sessionID).pipe(Effect.orDie)
           if (flags.client === "coda") TerminalStore.owner()
 
-          let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+          const history = yield* MessageV2.stream(sessionID).pipe(
             Effect.provideService(Database.Service, database),
           )
+          let msgs = MessageV2.filterCompacted(history)
 
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
           if (todoReminder && todoReminder.turnID !== lastUser?.id) todoReminder = undefined
           if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
+          const turnID = TerminalStore.currentTurn(history) ?? lastUser.id
           if (flags.client === "coda")
             TerminalStore.saveRun({
               sessionID,
               ownerID: TerminalStore.owner().id,
-              turnID: lastUser.id,
+              turnID,
               backendID: TerminalClient.backendID,
               active: true,
             })
@@ -1120,7 +1122,7 @@ const layer = Layer.effect(
           const terminalTasks =
             flags.client === "coda"
               ? TerminalStore.list(ctx.directory, sessionID).filter(
-                  (task) => task.sessionID === sessionID && task.turnID === lastUser.id && !task.suppressed,
+                  (task) => task.sessionID === sessionID && task.turnID === turnID && !task.suppressed,
                 )
               : []
           // A persisted tool result is the acknowledgement; do not consume a result merely because a process exited.
@@ -1273,12 +1275,13 @@ const layer = Layer.effect(
             while (terminalRoot.parentID) terminalRoot = yield* sessions.get(terminalRoot.parentID).pipe(Effect.orDie)
             const rootHistory =
               terminalRoot.id === sessionID
-                ? msgs
+                ? history
                 : yield* sessions.messages({ sessionID: terminalRoot.id }).pipe(Effect.orDie)
-            const rootTurn = rootHistory.findLast((message) => message.info.role === "user")?.info.id
+            const rootTurn = TerminalStore.currentTurn(rootHistory)
             const tools = yield* SessionTools.resolve({
               rootSessionID: terminalRoot.id,
               rootTurnID: rootTurn,
+              turnID,
               agent,
               session,
               model,
@@ -1456,7 +1459,8 @@ const layer = Layer.effect(
         const checkpoint = TerminalStore.run(input.sessionID)
         if (checkpoint?.suppressed) {
           const history = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
-          if (history.findLast((message) => message.info.role === "user")?.info.id === checkpoint.turnID)
+          // Also honor checkpoints written before canonical desktop turn IDs.
+          if (TerminalStore.currentTurn(history) === checkpoint.turnID || MessageV2.latest(history).user?.id === checkpoint.turnID)
             return yield* lastAssistant(input.sessionID)
         }
       }

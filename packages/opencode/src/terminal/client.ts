@@ -196,7 +196,8 @@ export async function start(
       rows: 32,
       name: "xterm-256color",
       env: Object.fromEntries(
-        Object.entries(env).filter((item): item is [string, string] => typeof item[1] === "string"),
+        Object.entries({ ...env, TERM: "xterm-256color", PAGER: "cat", GIT_PAGER: "cat" })
+          .filter((item): item is [string, string] => typeof item[1] === "string"),
       ),
     })
     let settle!: () => void

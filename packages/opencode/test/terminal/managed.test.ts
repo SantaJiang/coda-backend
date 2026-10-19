@@ -45,6 +45,17 @@ const command = (command: string, key: string, timeout?: number) =>
   })
 const output = (info: Store.Info) => Buffer.from(Store.log(info, 0).data, "base64").toString("utf8")
 
+test("terminal ownership follows the real user across compaction and model-order history", () => {
+  const user = (id: string, created: number, parts: { type: string; synthetic?: boolean }[]) => ({ info: { id, role: "user", time: { created } }, parts })
+  const question = user("question", 1, [{ type: "text" }])
+  const compact = user("compact", 2, [{ type: "compaction" }])
+  const follow = user("follow", 3, [{ type: "text", synthetic: true }])
+  expect(Store.currentTurn([question, compact, follow])).toBe("question")
+  expect(Store.currentTurn([follow, compact, question])).toBe("question")
+  expect(Store.currentTurn([compact, question, follow])).toBe("question")
+  expect(Store.currentTurn([follow, user("next", 4, [{ type: "file" }]), question])).toBe("next")
+})
+
 test("quick completion returns without exhausting its wait and retains unicode output", async () => {
   if (process.platform === "win32") return
   const info = await command("printf '你好 terminal\\n'", "quick")
@@ -53,6 +64,26 @@ test("quick completion returns without exhausting its wait and retains unicode o
   expect(Date.now() - before).toBeLessThan(3000)
   expect(done.status).toBe("completed")
   expect(output(done)).toContain("你好 terminal")
+})
+test("managed commands have a usable TERM and disable interactive pagers", async () => {
+  if (process.platform === "win32") return
+  const info = await command('printf "%s|%s|%s" "$TERM" "$PAGER" "$GIT_PAGER"', "pager-env")
+  const done = await Client.wait(info.id, 3000)
+  expect(done.status).toBe("completed")
+  expect(output(done)).toContain("xterm-256color|cat|cat")
+})
+test("git log completes unattended in a managed PTY even when Git enables a pager", async () => {
+  if (process.platform === "win32") return
+  const init = await command(
+    'git init --quiet pager-fixture && git -C pager-fixture -c user.name=Coda -c user.email=coda@example.test -c commit.gpgsign=false commit --allow-empty --quiet -m pager-check',
+    "pager-fixture",
+  )
+  expect((await Client.wait(init.id, 5000)).status).toBe("completed")
+  const info = await command('cd pager-fixture && ls -la && echo "---" && git -c core.pager=less log --oneline -5', "git-pager")
+  const done = await Client.wait(info.id, 3000)
+  expect(done.status).toBe("completed")
+  expect(output(done)).toContain("pager-check")
+  expect(output(done)).not.toContain("Press RETURN")
 })
 test("a check interval expiring does not kill the process and duplicate starts reuse the PID", async () => {
   if (process.platform === "win32") return

@@ -81,17 +81,21 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
-  test("uses retry-after values even when exceeding 10 minutes with headers", () => {
+  test("bounds provider retry hints to one minute", () => {
     const error = apiError({ "retry-after": "50" })
     expect(SessionRetry.delay(1, error)).toBe(50000)
 
     const longError = apiError({ "retry-after-ms": "700000" })
-    expect(SessionRetry.delay(1, longError)).toBe(700000)
+    expect(SessionRetry.delay(1, longError)).toBe(60000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after": "22428" }))).toBe(60000)
   })
 
-  test("caps oversized header delays to the runtime timer limit", () => {
+  test("caps oversized header delays and ignores malformed millisecond hints", () => {
     const error = apiError({ "retry-after-ms": "999999999999" })
     expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
+    for (const value of ["-1", "Infinity", "100ms"]) {
+      expect(SessionRetry.delay(1, apiError({ "retry-after-ms": value }), 0)).toBe(2000)
+    }
   })
 
   it.instance("policy updates retry status and increments attempts", () =>
