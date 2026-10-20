@@ -196,7 +196,7 @@ export async function start(
       rows: 32,
       name: "xterm-256color",
       env: Object.fromEntries(
-        Object.entries({ ...env, TERM: "xterm-256color", PAGER: "cat", GIT_PAGER: "cat" })
+        Object.entries({ ...env, PYTHONUNBUFFERED: env.PYTHONUNBUFFERED ?? "1", TERM: "xterm-256color", PAGER: "cat", GIT_PAGER: "cat" })
           .filter((item): item is [string, string] => typeof item[1] === "string"),
       ),
     })

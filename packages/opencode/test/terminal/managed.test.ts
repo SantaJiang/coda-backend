@@ -72,6 +72,18 @@ test("managed commands have a usable TERM and disable interactive pagers", async
   expect(done.status).toBe("completed")
   expect(output(done)).toContain("xterm-256color|cat|cat")
 })
+test("Python stage output is visible before a long command finishes", async () => {
+  const python = Bun.which("python3")
+  if (!python || process.platform === "win32" || process.env.PYTHONUNBUFFERED !== undefined) return
+  const info = await command(`"${python}" -c 'import sys,time; sys.stdout.write("stage 1"); time.sleep(30)'`, "python-progress")
+  try {
+    const deadline = Date.now() + 5000
+    let current = info
+    while (!output(current).includes("stage 1") && Date.now() < deadline) current = await Client.wait(info.id, 50)
+    expect(current.status).toBe("running")
+    expect(output(current)).toContain("stage 1")
+  } finally { await Client.cancel(info.id) }
+})
 test("git log completes unattended in a managed PTY even when Git enables a pager", async () => {
   if (process.platform === "win32") return
   const init = await command(
