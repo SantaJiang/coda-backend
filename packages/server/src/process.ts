@@ -53,8 +53,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   transform?: Transform,
   remoteURLs?: () => ReadonlyArray<string>,
 ) {
-  const password = options.password
-  if (!password) return yield* Effect.fail(new Error("Missing server password"))
+  const password = options.password || undefined
   const hostname = options.hostname ?? "127.0.0.1"
   const port = Option.fromNullishOr(options.port)
   const shutdown = yield* Latch.make()
@@ -180,14 +179,17 @@ function addressInUse(error: unknown) {
 }
 
 function dispatch(
-  password: string,
+  password: string | undefined,
   status: Status.Interface,
   application: Ref.Ref<Option.Option<App>>,
   version: string,
   urls: () => ReadonlyArray<string>,
   tmp: string,
 ): App {
-  const auth = ServerAuth.Config.of({ password: Option.some(password), username: "opencode" })
+  const auth = ServerAuth.Config.of({
+    password: password ? Option.some(password) : Option.none(),
+    username: "opencode",
+  })
   return Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest
     const url = new URL(request.url, "http://localhost")
