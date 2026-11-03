@@ -73,9 +73,8 @@ export const sessionInfo = Effect.fnUntraced(function* (sessions: Session.Interf
 
 export function requestRef(request: HttpServerRequest.HttpServerRequest): Location.Ref {
   const query = new URL(request.url, "http://localhost").searchParams
-  const directory =
-    query.get("location[directory]") ||
-    (request.headers["x-opencode-directory"] ? decode(request.headers["x-opencode-directory"]) : process.cwd())
+  const header = request.headers["x-coda-directory"] || request.headers["x-opencode-directory"]
+  const directory = query.get("location[directory]") || (header ? decode(header) : process.cwd())
   return Location.Ref.make({
     directory: AbsolutePath.make(directory),
   })

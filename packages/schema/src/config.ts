@@ -117,7 +117,11 @@ export class Info extends Schema.Class<Info>("Config.Info")({
 }) {}
 
 export const Patch = Schema.Struct({
-  shell: Schema.NullOr(Schema.String),
+  shell: optional(Schema.NullOr(Schema.String)),
+  // Coda still writes the v1 provider and mcp maps. Config normalization accepts both on read.
+  provider: optional(Schema.Record(Schema.String, Schema.Unknown)),
+  mcp: optional(Schema.Record(Schema.String, Schema.Unknown)),
+  mcpRemove: optional(Schema.Array(Schema.String)),
 }).annotate({ identifier: "Config.Patch" })
 export interface Patch extends Schema.Schema.Type<typeof Patch> {}
 

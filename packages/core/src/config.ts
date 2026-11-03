@@ -25,6 +25,48 @@ import { WellKnown } from "./wellknown.js"
 import { AppProcess } from "@opencode/util/process"
 import { ChildProcess } from "effect/process"
 
+const configFormat = { formattingOptions: { tabSize: 2, insertSpaces: true } }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function mergeRecords(base: Record<string, unknown>, patch: Record<string, unknown>) {
+  const next = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    const current = next[key]
+    next[key] = isRecord(current) && isRecord(value) ? { ...current, ...value } : value
+  }
+  return next
+}
+
+/** Writes the fields Coda edits. Shell clears on null; provider and mcp merge by name. */
+export function applyConfigPatch(text: string, patch: Patch) {
+  let current = text
+  const write = (segments: string[], value: unknown) => {
+    current = applyEdits(current, modify(current, segments, value, configFormat))
+  }
+  if (patch.shell !== undefined) write(["shell"], patch.shell ?? undefined)
+  const root = () => {
+    const parsed = parse(current)
+    return isRecord(parsed) ? parsed : {}
+  }
+  if (patch.provider) {
+    const provider = root().provider
+    write(["provider"], mergeRecords(isRecord(provider) ? provider : {}, patch.provider))
+  }
+  if (patch.mcp || patch.mcpRemove?.length) {
+    const mcp = root().mcp
+    const existing = isRecord(mcp) ? { ...mcp } : {}
+    const nested = isRecord(existing.servers)
+    const target = nested ? existing.servers : existing
+    const merged = patch.mcp ? mergeRecords(target, patch.mcp) : { ...target }
+    for (const name of patch.mcpRemove ?? []) delete merged[name]
+    write(["mcp"], nested ? { ...existing, servers: merged } : merged)
+  }
+  return current
+}
+
 export function latest<K extends keyof Info>(entries: readonly Entry[], key: K): Info[K] | undefined {
   return entries.findLast((entry): entry is Document => entry.type === "document" && entry.info[key] !== undefined)
     ?.info[key]
@@ -474,13 +516,7 @@ export const layer = (options?: Options) =>
             (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
           const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
           const updated = yield* Effect.try({
-            try: () =>
-              applyEdits(
-                text,
-                modify(text, ["shell"], patch.shell ?? undefined, {
-                  formattingOptions: { tabSize: 2, insertSpaces: true },
-                }),
-              ),
+            try: () => applyConfigPatch(text, patch),
             catch: (cause) => new FSUtil.FileSystemError({ method: "config.update", cause }),
           })
           yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)

@@ -43,16 +43,29 @@ describe("global roots", () => {
       tmp: path.join(os.tmpdir(), "opencode"),
     })
   })
+
+  test("CODA_HOME collects every root under one directory", () => {
+    const root = path.join(os.tmpdir(), "coda-home")
+    expect(run({ CODA_HOME: root })).toEqual({
+      data: root,
+      cache: path.join(root, "cache"),
+      config: root,
+      state: path.join(root, "state"),
+      tmp: path.join(os.tmpdir(), "coda"),
+    })
+  })
 })
 
 function run(env: Record<string, string>) {
+  const inherited = { ...process.env }
+  for (const key of ["CODA_HOME", "CODA_CLIENT", "OPENCODE_CLIENT"]) delete inherited[key]
   const result = Bun.spawnSync({
     cmd: [
       process.execPath,
       "-e",
       `const { roots } = await import(${JSON.stringify(module)}); console.log(JSON.stringify(roots("opencode")))`,
     ],
-    env: { ...process.env, ...env },
+    env: { ...inherited, ...env },
     stdout: "pipe",
     stderr: "pipe",
   })
