@@ -58,11 +58,11 @@ export function applyConfigPatch(text: string, patch: Patch) {
   if (patch.mcp || patch.mcpRemove?.length) {
     const mcp = root().mcp
     const existing = isRecord(mcp) ? { ...mcp } : {}
-    const nested = isRecord(existing.servers)
-    const target = nested ? existing.servers : existing
+    const servers = isRecord(existing.servers) ? existing.servers : undefined
+    const target: Record<string, unknown> = servers ?? existing
     const merged = patch.mcp ? mergeRecords(target, patch.mcp) : { ...target }
     for (const name of patch.mcpRemove ?? []) delete merged[name]
-    write(["mcp"], nested ? { ...existing, servers: merged } : merged)
+    write(["mcp"], servers ? { ...existing, servers: merged } : merged)
   }
   return current
 }

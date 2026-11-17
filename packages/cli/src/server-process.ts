@@ -152,6 +152,9 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
           : {
               onListen: (address, shutdown) =>
                 Effect.gen(function* () {
+                  // Service mode always generates a password, so the desktop sidecar's unauthenticated
+                  // default can never reach the service registry.
+                  if (!password) return yield* Effect.fail(new Error("Missing server password"))
                   if (!config.password) yield* ServiceConfig.password(password)
                   return yield* ServiceRegistration.register({
                     address,
