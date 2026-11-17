@@ -76,9 +76,7 @@ const acquire = (input: Partial<Interface>) =>
 
 const layer = Layer.effect(
   Service,
-  Effect.suspend(() =>
-      acquire({ config: process.env.CODA_CONFIG_DIR ?? process.env.OPENCODE_CONFIG_DIR ?? Path.config }),
-    ),
+  Effect.suspend(() => acquire({ config: process.env.CODA_CONFIG_DIR ?? process.env.OPENCODE_CONFIG_DIR ?? Path.config })),
 )
 
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [] })
